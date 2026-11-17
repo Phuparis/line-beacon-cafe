@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LINE Beacon Simulator</title>
+<style>
+  :root { --green:#06c755; --ink:#1f2328; --muted:#6b7280; --line:#e5e7eb; --bg:#faf7f2; --wood:#8b5e3c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:system-ui,-apple-system,"Noto Sans Thai",sans-serif; color:var(--ink); background:var(--bg); }
+  header { padding:20px 24px 8px; }
+  h1 { margin:0; font-size:22px; }
+  header p { margin:6px 0 0; color:var(--muted); font-size:14px; line-height:1.6; }
+  main { display:grid; grid-template-columns:1fr 320px; gap:20px; padding:16px 24px 32px; }
+  @media (max-width:820px){ main { grid-template-columns:1fr; } }
+  .card { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px; }
+  .card h2 { margin:0 0 4px; font-size:16px; }
+  .hint { color:var(--muted); font-size:13px; margin:0 0 14px; line-height:1.6; }
+  .shop { position:relative; border:2px dashed #d6c7b5; border-radius:12px; padding:18px; background:#fffdf9; }
+  .street { text-align:center; font-size:12px; color:var(--muted); letter-spacing:2px; margin-bottom:10px; }
+  .zones { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  .zone { border:1px solid var(--line); border-radius:12px; padding:14px; background:#fff; }
+  .zone .name { font-weight:600; }
+  .zone .meta { font-size:12px; color:var(--muted); margin:4px 0 12px; font-family:ui-monospace,monospace; }
+  .beacon-dot { display:inline-block; width:10px; height:10px; border-radius:50%; background:var(--green); margin-right:6px; box-shadow:0 0 0 0 rgba(6,199,85,.6); }
+  .zone.pulse .beacon-dot { animation:pulse 1s ease-out 2; }
+  @keyframes pulse { to { box-shadow:0 0 0 14px rgba(6,199,85,0); } }
+  button { font:inherit; border-radius:10px; border:1px solid var(--line); background:#fff; padding:10px 14px; cursor:pointer; }
+  button.primary { background:var(--green); border-color:var(--green); color:#fff; font-weight:600; width:100%; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin-top:14px; flex-wrap:wrap; }
+  .status { font-size:13px; color:var(--muted); }
+  .phone { background:#8cabd9; border-radius:24px; padding:14px; min-height:420px; border:8px solid #222; }
+  .phone .top { background:#fff; margin:-14px -14px 12px; padding:10px 14px; border-radius:16px 16px 0 0; font-weight:600; font-size:14px; }
+  .bubble { background:#fff; border-radius:16px; padding:9px 12px; margin:0 30px 8px 0; font-size:14px; line-height:1.5; white-space:pre-line; animation:pop .25s ease-out; }
+  .sys { text-align:center; font-size:12px; color:#fff; background:rgba(0,0,0,.25); border-radius:10px; padding:4px 8px; margin:0 auto 8px; width:fit-content; }
+  @keyframes pop { from { transform:scale(.9); opacity:0; } }
+  pre { background:#0f172a; color:#e2e8f0; border-radius:10px; padding:12px; font-size:12px; overflow:auto; max-height:260px; margin:0; }
+  .log-title { display:flex; justify-content:space-between; align-items:center; margin:18px 0 8px; }
+  .tag { font-size:12px; border-radius:999px; padding:2px 10px; }
+  .tag.sent { background:#dcfce7; color:#166534; } .tag.skipped { background:#fef3c7; color:#92400e; } .tag.error { background:#fee2e2; color:#991b1b; }
+  .warn { background:#fef3c7; color:#92400e; border-radius:10px; padding:10px 12px; font-size:13px; margin-bottom:12px; display:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">LINE Beacon Simulator</h1>
+  <p>จำลองลูกค้าเดินเข้าระยะ beacon โดยไม่ต้องมีอุปกรณ์จริง ระบบจะส่ง event หน้าตาเหมือนที่ LINE ส่งมา
+    เข้าไปที่เซิร์ฟเวอร์ แล้วข้อความจะเด้งเข้า LINE ของคุณจริง ๆ</p>
+</header>
+
+<main>
+  <section class="card">
+    <h2>แผนผังร้าน</h2>
+    <p class="hint">กดปุ่มในแต่ละโซนเพื่อจำลองว่ามือถือของลูกค้าเจอสัญญาณ beacon ตรงนั้น
+      ลองกดซ้ำเพื่อดูระบบกันส่งข้อความซ้ำ (cooldown <span id="cooldown">24</span> ชั่วโมง)</p>
+    <div class="warn" id="warn">ยังไม่ได้ใส่ LINE_DEMO_USER_ID ในไฟล์ .env ระบบจึงยังส่งข้อความไม่ได้</div>
+    <div class="shop">
+      <div class="street">ทางเดินหน้าร้าน</div>
+      <div class="zones" id="zones"></div>
+    </div>
+    <div class="toolbar">
+      <button id="reset">ล้างประวัติการมาร้าน</button>
+      <span class="status" id="status"></span>
+    </div>
+
+    <div class="log-title"><h2>ข้อมูลที่ส่งเข้าเซิร์ฟเวอร์ล่าสุด</h2><span id="tag"></span></div>
+    <pre id="log">ยังไม่มีข้อมูล ลองกดปุ่มด้านบน</pre>
+  </section>
+
+  <aside class="phone" aria-label="ตัวอย่างหน้าแชท LINE">
+    <div class="top" id="phoneTitle">LINE</div>
+    <div id="chat"><div class="sys">ข้อความที่ส่งสำเร็จจะแสดงตรงนี้ด้วย</div></div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const reasons = {
+  cooldown: 'ส่งไปแล้วในช่วง cooldown ระบบจึงไม่ส่งซ้ำ',
+  'unknown-beacon': 'ไม่รู้จัก beacon นี้ ระบบจึงไม่ส่ง',
+  'not-enter': 'ไม่ใช่ event เดินเข้า',
+};
+
+async function init() {
+  const info = await fetch('/api/beacons').then((r) => r.json());
+  document.title = `${info.shopName} · LINE Beacon Simulator`;
+  $('title').textContent = `${info.shopName} · LINE Beacon Simulator`;
+  $('phoneTitle').textContent = info.shopName;
+  $('cooldown').textContent = info.cooldownHours;
+  if (!info.demoUserReady) $('warn').style.display = 'block';
+
+  for (const b of info.beacons) {
+    const zone = document.createElement('div');
+    zone.className = 'zone';
+    zone.innerHTML = `<div class="name"><span class="beacon-dot"></span></div>
+      <div class="meta">hwid ${b.hwid}</div>
+      <button class="primary">${b.zone === 'entrance' ? 'เดินเข้าร้าน' : 'เดินไปที่จุดนี้'}</button>`;
+    zone.querySelector('.name').append(b.name);
+    zone.querySelector('button').onclick = (e) => simulate(b, zone, e.target);
+    $('zones').append(zone);
+  }
+}
+
+async function simulate(beacon, zone, btn) {
+  btn.disabled = true;
+  zone.classList.remove('pulse'); void zone.offsetWidth; zone.classList.add('pulse');
+  $('status').textContent = 'กำลังส่ง...';
+  try {
+    const res = await fetch('/api/simulate/beacon', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hwid: beacon.hwid }),
+    });
+    const data = await res.json();
+    $('log').textContent = JSON.stringify(data.event || data, null, 2);
+
+    if (!res.ok) return show('error', data.error);
+    const r = data.result;
+    if (r.status === 'sent') {
+      show('sent', `ส่งข้อความแล้ว (${r.via}) จาก ${r.beacon}`);
+      for (const m of r.messages) addBubble(m.text);
+    } else {
+      show('skipped', reasons[r.reason] || r.reason);
+      addSys(`${beacon.name}: ${reasons[r.reason] || r.reason}`);
+    }
+  } catch (err) {
+    show('error', 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function show(kind, text) {
+  $('status').textContent = text;
+  $('tag').innerHTML = `<span class="tag ${kind}">${kind}</span>`;
+}
+function addBubble(text) {
+  const el = document.createElement('div'); el.className = 'bubble'; el.textContent = text; $('chat').append(el);
+}
+function addSys(text) {
+  const el = document.createElement('div'); el.className = 'sys'; el.textContent = text; $('chat').append(el);
+}
+
+$('reset').onclick = async () => {
+  await fetch('/api/simulate/reset', { method: 'POST' });
+  $('status').textContent = 'ล้างประวัติแล้ว ครั้งถัดไปจะนับเป็นการมาร้านครั้งแรก';
+  addSys('ล้างประวัติการมาร้านแล้ว');
+};
+
+init().catch(() => show('error', 'โหลดข้อมูล beacon ไม่ได้'));
+</script>
+</body>
+</html>
