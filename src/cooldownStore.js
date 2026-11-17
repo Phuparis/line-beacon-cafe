@@ -41,6 +41,17 @@ class CooldownStore {
     return this.data.visits[userId];
   }
 
+  /** ผู้รับข้อความของหน้าเว็บจำลอง (คนล่าสุดที่แอดเพื่อนหรือทักแชทร้าน) */
+  setDemoUser(userId) {
+    if (this.data.demoUserId === userId) return;
+    this.data.demoUserId = userId;
+    this.save();
+  }
+
+  getDemoUser() {
+    return this.data.demoUserId || null;
+  }
+
   reset(userId) {
     if (!userId) {
       this.data = { lastSent: {}, visits: {} };

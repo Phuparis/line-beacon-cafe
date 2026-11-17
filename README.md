@@ -33,44 +33,45 @@ flowchart TD
 
 ## เริ่มใช้งาน
 
+ทั้งหมดตั้งค่าได้จากมือถือ ใช้แค่ **Channel ID** กับ **Channel secret**
+ระบบขอ access token จาก LINE เอง และตั้ง Webhook URL ให้เองเมื่อรันบน Render
+
 ### 1. เตรียม LINE
 
 1. สร้าง LINE Official Account ที่ [manager.line.biz](https://manager.line.biz)
-2. ตั้งค่า > Messaging API > เปิดใช้ Messaging API (สร้าง Provider)
+2. ตั้งค่า > Messaging API > เปิดใช้ Messaging API (สร้าง Provider) แล้วจด Channel ID กับ Channel secret
 3. ตั้งค่าการตอบกลับ: ปิดข้อความตอบกลับอัตโนมัติ, ปิดข้อความทักทาย, ปิดเวลาตอบข้อความ
-4. ใน [LINE Developers Console](https://developers.line.biz/console/) จดค่า Channel secret, Channel access token และ Your user ID
 
-### 2. ติดตั้งและรัน
+### 2. Deploy บน Render (ฟรี)
+
+1. render.com > New > Web Service > เลือก repo นี้
+2. Build Command `npm install`, Start Command `npm start`, Instance Type **Free**
+3. Environment Variables: `LINE_CHANNEL_ID`, `LINE_CHANNEL_SECRET`, `SIMULATOR_ENABLED=true`
+4. Deploy แล้วดู log ต้องเห็นบรรทัด `ตั้ง Webhook URL ใน LINE แล้ว`
+5. ใน LINE Official Account Manager > ตั้งค่า > การตั้งค่าการตอบกลับ เปิดสวิตช์ **Webhook**
+
+### 3. แอดร้านเป็นเพื่อนแล้วทักหนึ่งครั้ง
+
+แอดร้านด้วยเบสิค ID หรือ QR code แล้วพิมพ์อะไรก็ได้หาร้าน 1 ครั้ง
+ระบบจะจำคุณเป็นผู้รับข้อความของหน้าเว็บจำลอง (พิมพ์ `myid` เพื่อดู user ID ของตัวเอง)
+
+### รันบนเครื่องตัวเองแทน Render
 
 ```bash
 npm install
-cp .env.example .env   # แล้วกรอกค่าจากข้อ 1
+cp .env.example .env   # กรอก LINE_CHANNEL_ID และ LINE_CHANNEL_SECRET
 npm start
 ```
 
-เปิด http://localhost:3000 จะเจอหน้าเว็บจำลอง
-
-### 3. เปิดให้ LINE ส่ง webhook เข้ามาได้
-
 LINE ต้องเรียกเซิร์ฟเวอร์ผ่าน HTTPS จากอินเทอร์เน็ต ระหว่างพัฒนาใช้ tunnel ได้ เช่น
-
-```bash
-npx cloudflared tunnel --url http://localhost:3000
-# หรือ ngrok http 3000
-```
-
-นำ URL ที่ได้ไปใส่ใน LINE Developers Console > Messaging API > Webhook URL เป็น `https://<url>/webhook`
-กด Verify แล้วเปิด Use webhook
-
-### 4. แอดร้านเป็นเพื่อน
-
-สแกน QR code ในแท็บ Messaging API ด้วย LINE ในมือถือ
+`npx cloudflared tunnel --url http://localhost:3000` แล้วใส่ URL ที่ได้ใน `PUBLIC_URL` ใน `.env`
+ระบบจะตั้ง Webhook URL ให้ตอนเริ่มรัน
 
 ## วิธีทดสอบ 3 แบบ
 
 ### แบบที่ 1: หน้าเว็บจำลอง (ไม่ต้องมีอุปกรณ์)
 
-เปิด http://localhost:3000 แล้วกด "เดินเข้าร้าน" ข้อความจะเด้งเข้า LINE ของคุณ (บัญชีใน `LINE_DEMO_USER_ID`)
+เปิดลิงก์ของเซิร์ฟเวอร์ (หรือ http://localhost:3000) แล้วกด "เดินเข้าร้าน" ข้อความจะเด้งเข้า LINE ของคนล่าสุดที่ทักแชทร้าน (หรือบัญชีใน `LINE_DEMO_USER_ID` ถ้าใส่ไว้)
 
 event จำลองไม่มี `replyToken` ระบบจึงส่งแบบ push ซึ่งนับโควตาข้อความของแพ็กเกจ LINE OA
 ส่วน event จริงจาก LINE ตอบแบบ reply ไม่นับโควตา
@@ -138,6 +139,7 @@ src/
   messages.js         ข้อความทั้งหมดของร้าน
   simulator.js        สร้าง beacon event จำลอง
   lineSimpleBeacon.js สร้างข้อมูลสัญญาณตามสเปก LINE Simple Beacon
+  lineAuth.js         ขอ access token จาก LINE เองด้วย Channel ID + secret
   config.js           อ่านค่าจาก .env และ config/beacons.json
 public/index.html     หน้าเว็บจำลอง
 config/beacons.json   รายชื่อ beacon ของร้าน

@@ -7,19 +7,32 @@ const { loadConfig } = require('./config');
 const { CooldownStore } = require('./cooldownStore');
 const { createEventHandler } = require('./eventHandler');
 const { buildSimulatedBeaconEvent } = require('./simulator');
+const { createTokenProvider, createLineClient } = require('./lineAuth');
 
 const config = loadConfig();
 
-const missing = ['channelSecret', 'channelAccessToken'].filter((k) => !config[k]);
-if (missing.length) {
-  console.error('ยังไม่ได้ใส่ LINE_CHANNEL_SECRET หรือ LINE_CHANNEL_ACCESS_TOKEN ในไฟล์ .env');
+if (!config.channelSecret || !(config.channelAccessToken || config.channelId)) {
+  console.error('ต้องใส่ LINE_CHANNEL_SECRET และ LINE_CHANNEL_ID (หรือ LINE_CHANNEL_ACCESS_TOKEN)');
   console.error('ดูวิธีในไฟล์ .env.example');
   process.exit(1);
 }
 
-const client = new line.messagingApi.MessagingApiClient({ channelAccessToken: config.channelAccessToken });
+const getToken = createTokenProvider({
+  staticToken: config.channelAccessToken,
+  channelId: config.channelId,
+  channelSecret: config.channelSecret,
+});
+const client = createLineClient({ getToken, MessagingApiClient: line.messagingApi.MessagingApiClient });
 const store = new CooldownStore(config.dataFile, config.cooldownMs);
-const handleEvent = createEventHandler({ client, store, config });
+
+// ผู้รับข้อความจากหน้าเว็บจำลอง: ใช้ค่าใน .env ถ้ามี
+// ถ้าไม่มี ใช้คนล่าสุดที่แอดเพื่อนหรือทักแชทร้าน
+const getDemoUser = () => config.demoUserId || store.getDemoUser();
+const onUser = (userId) => {
+  if (!config.demoUserId) store.setDemoUser(userId);
+};
+
+const handleEvent = createEventHandler({ client, store, config, onUser });
 
 const app = express();
 
@@ -36,6 +49,8 @@ app.post('/webhook', line.middleware({ channelSecret: config.channelSecret }), (
   }
 });
 
+app.get('/health', (req, res) => res.json({ ok: true }));
+
 // หน้าเว็บจำลอง
 if (config.simulatorEnabled) {
   app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -45,15 +60,18 @@ if (config.simulatorEnabled) {
       shopName: config.shopName,
       cooldownHours: config.cooldownMs / 3600000,
       beacons: config.beacons.map(({ hwid, name, zone }) => ({ hwid, name, zone })),
-      demoUserReady: Boolean(config.demoUserId),
+      demoUserReady: Boolean(getDemoUser()),
     });
   });
 
   app.post('/api/simulate/beacon', express.json(), async (req, res) => {
-    if (!config.demoUserId) {
-      return res.status(400).json({ error: 'ยังไม่ได้ใส่ LINE_DEMO_USER_ID ในไฟล์ .env' });
+    const userId = getDemoUser();
+    if (!userId) {
+      return res.status(400).json({
+        error: 'ยังไม่รู้ว่าจะส่งข้อความหาใคร ให้แอดร้านเป็นเพื่อนใน LINE แล้วพิมพ์อะไรก็ได้หาร้าน 1 ครั้ง',
+      });
     }
-    const event = buildSimulatedBeaconEvent({ hwid: req.body.hwid, userId: config.demoUserId });
+    const event = buildSimulatedBeaconEvent({ hwid: req.body.hwid, userId });
     try {
       const result = await handleEvent(event);
       res.json({ event, result });
@@ -63,13 +81,26 @@ if (config.simulatorEnabled) {
   });
 
   app.post('/api/simulate/reset', (req, res) => {
-    store.reset(config.demoUserId);
+    const userId = getDemoUser();
+    if (userId) store.reset(userId);
     res.json({ ok: true });
   });
 }
 
+// ตั้ง Webhook URL ใน LINE ให้อัตโนมัติ เมื่อรู้ URL สาธารณะของเซิร์ฟเวอร์ (เช่น บน Render)
+async function registerWebhook() {
+  if (!config.publicUrl || !config.autoSetWebhook) return;
+  const endpoint = `${config.publicUrl}/webhook`;
+  try {
+    await client.setWebhookEndpoint({ endpoint });
+    console.log(`ตั้ง Webhook URL ใน LINE แล้ว: ${endpoint}`);
+  } catch (err) {
+    console.error(`ตั้ง Webhook URL อัตโนมัติไม่สำเร็จ ให้ไปใส่เองที่ LINE Developers Console: ${err.message}`);
+  }
+}
+
 app.listen(config.port, () => {
-  console.log(`${config.shopName} bot พร้อมแล้วที่ http://localhost:${config.port}`);
-  console.log(`Webhook URL: https://<โดเมนของคุณ>/webhook`);
-  if (config.simulatorEnabled) console.log(`หน้าเว็บจำลอง: http://localhost:${config.port}`);
+  console.log(`${config.shopName} bot พร้อมแล้วที่พอร์ต ${config.port}`);
+  if (config.simulatorEnabled) console.log(`หน้าเว็บจำลอง: ${config.publicUrl || `http://localhost:${config.port}`}`);
+  registerWebhook();
 });

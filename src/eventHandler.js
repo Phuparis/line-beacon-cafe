@@ -5,8 +5,9 @@ const { entranceMessages, counterMessages, welcomeOnFollow } = require('./messag
  *
  * client = ตัวส่งข้อความของ LINE SDK (ตอนเทสต์ใส่ตัวปลอมแทนได้)
  * store  = สมุดจด cooldown และจำนวนครั้งที่มาร้าน
+ * onUser = เรียกทุกครั้งที่มีคนแอดเพื่อนหรือทักแชทเข้ามา (ใช้จำผู้รับข้อความของหน้าเว็บจำลอง)
  */
-function createEventHandler({ client, store, config, now = () => new Date() }) {
+function createEventHandler({ client, store, config, onUser = () => {}, now = () => new Date() }) {
   // จำ webhookEventId ที่ทำไปแล้ว กัน LINE ส่ง event เดิมซ้ำ (redelivery)
   const seenEventIds = new Set();
   const MAX_SEEN = 1000;
@@ -69,10 +70,17 @@ function createEventHandler({ client, store, config, now = () => new Date() }) {
       case 'beacon':
         return handleBeacon(event);
       case 'follow': {
+        if (event.source?.userId) onUser(event.source.userId);
         const via = await send(event, welcomeOnFollow(config.shopName));
         return { status: 'sent', via };
       }
       case 'message':
+        if (event.source?.userId) onUser(event.source.userId);
+        if (event.message?.type === 'text' && event.message.text.trim().toLowerCase() === 'myid') {
+          // คำสั่งสำหรับนักพัฒนา: ดู user ID ของตัวเองโดยไม่ต้องเข้า LINE Developers Console
+          const via = await send(event, [{ type: 'text', text: `User ID ของคุณ:\n${event.source.userId}` }]);
+          return { status: 'sent', via };
+        }
         if (event.message?.type === 'text') {
           const via = await send(event, [
             { type: 'text', text: 'ขอบคุณที่ทักมาครับ แวะมาที่ร้านเมื่อไหร่ ระบบจะส่งคูปองให้อัตโนมัติ ☕' },

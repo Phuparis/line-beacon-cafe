@@ -100,3 +100,26 @@ test('event จากหน้าเว็บจำลองไม่มี repl
   assert.strictEqual(r.via, 'push');
   assert.strictEqual(sent[0].to, 'U1');
 });
+
+test('พิมพ์ myid แล้ว bot ตอบ user ID กลับ', async () => {
+  const { handle, sent } = setup();
+  await handle({
+    type: 'message',
+    replyToken: 't',
+    webhookEventId: 'e-myid',
+    source: { type: 'user', userId: 'U1' },
+    message: { type: 'text', text: ' MyID ' },
+  });
+  assert.match(sent[0].messages[0].text, /U1/);
+});
+
+test('จำคนที่แอดเพื่อนหรือทักแชท ไว้เป็นผู้รับข้อความของหน้าเว็บจำลอง', async () => {
+  const seen = [];
+  const client = { replyMessage: async () => {}, pushMessage: async () => {} };
+  const store = new CooldownStore(null, HOUR);
+  const config = { shopName: 'x', findBeacon: () => null };
+  const handle = createEventHandler({ client, store, config, onUser: (id) => seen.push(id) });
+  await handle({ type: 'follow', replyToken: 't', webhookEventId: 'f1', source: { userId: 'U9' } });
+  await handle({ type: 'message', replyToken: 't', webhookEventId: 'm1', source: { userId: 'U9' }, message: { type: 'text', text: 'hi' } });
+  assert.deepStrictEqual(seen, ['U9', 'U9']);
+});

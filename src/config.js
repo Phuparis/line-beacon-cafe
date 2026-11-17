@@ -18,8 +18,12 @@ function loadConfig(env = process.env) {
   const beacons = loadBeacons();
   return {
     port: Number(env.PORT || 3000),
+    channelId: env.LINE_CHANNEL_ID || '',
     channelSecret: env.LINE_CHANNEL_SECRET || '',
     channelAccessToken: env.LINE_CHANNEL_ACCESS_TOKEN || '',
+    // URL สาธารณะของเซิร์ฟเวอร์ Render ใส่ RENDER_EXTERNAL_URL ให้อัตโนมัติ
+    publicUrl: (env.PUBLIC_URL || env.RENDER_EXTERNAL_URL || '').replace(/\/$/, ''),
+    autoSetWebhook: env.AUTO_SET_WEBHOOK !== 'false',
     demoUserId: env.LINE_DEMO_USER_ID || '',
     shopName: env.SHOP_NAME || 'Beacon Brew',
     cooldownMs: Number(env.COOLDOWN_HOURS || 24) * 60 * 60 * 1000,
